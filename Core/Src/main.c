@@ -1,10 +1,12 @@
 /* USER CODE BEGIN Header */
 /**
-  * 工业级防掉帧版 (Ring Buffer Strategy)
-  * 核心原理：
-  * 1. UART1 DMA 开启 Circular 模式，永不停止，像录像带一样循环录制。
-  * 2. 主循环检测 DMA 指针位置，只要有新数据，立刻通过 UART2 转发。
-  * 3. 彻底消除 "等待满一包才发" 造成的阻塞和溢出风险。
+  * 最终极简版 (Combined)
+  * * 前置条件 (CubeMX配置)：
+  * 1. USART1 DMA RX -> Mode: Circular (必须是循环模式！！)
+  * 2. USART2 Baud Rate -> 921600 (波特率要够快)
+  * * 逻辑：
+  * - 收到 '1': 开启 混合传输 (BMD转发 + IMU采集发送)
+  * - 收到 '3': 停止
   */
 /* USER CODE END Header */
 #include "main.h"
@@ -16,10 +18,9 @@
 #include <string.h>
 #include <stdio.h>
 
-// ================= 定义区域 =================
-
+/* USER CODE BEGIN PV */
 // --- MPU6050 (IMU) ---
-#define MPU_SAMPLES  50
+#define MPU_SAMPLES     50
 #define IMU_TOTAL_SIZE  (MPU_SAMPLES * 16) 
 
 typedef struct {
@@ -31,42 +32,43 @@ typedef struct {
 MPU6050_Data_t MpuBuffer[MPU_SAMPLES];
 uint8_t MpuSendPacket[IMU_TOTAL_SIZE]; 
 
-// --- BMD101 (关键修改) ---
-// 缓冲区开大一点，用作环形缓冲
-#define RX_BUFFER_SIZE  10240 
+// --- BMD101 (环形缓冲) ---
+// 只要是 Circular 模式，这个 buffer 就会像传送带一样永远转下去
+#define RX_BUFFER_SIZE  4096 
 uint8_t RxRingBuffer[RX_BUFFER_SIZE]; 
 
-// 环形缓冲指针
-volatile uint32_t write_ptr_hw = 0; // DMA 硬件当前写到的位置
-uint32_t read_ptr_sw = 0;           // 软件当前发到的位置
+// 指针
+uint32_t write_ptr = 0; // DMA 当前写到哪了
+uint32_t read_ptr = 0;  // 我们发送到哪了
 
-// --- 全局变量 ---
-volatile uint8_t run_mode = 0;
+// 控制
+volatile uint8_t run_mode = 0; // 0=Stop, 1=Start
 uint8_t rx_cmd_byte;
 
 // MPU 变量
 uint8_t mpu_index = 0;
 volatile uint8_t mpu_timer_flag = 0;
+/* USER CODE END PV */
 
+/* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 
-// --- 辅助函数 ---
-
-// 阻塞发送 (最稳，且因为是追赶式发送，每次发的数据量小，不会卡顿)
+/* USER CODE BEGIN 0 */
+// 极简发送函数：直接调用 HAL 阻塞发送，依靠内部超时防止死锁
+// 921600波特率下，发送几个字节只需要微秒级，不会卡顿
 void Uart_Send(uint8_t* data, uint16_t len) {
     if (len == 0) return;
-    HAL_UART_Transmit(&huart2, data, len, 100);
+    HAL_UART_Transmit(&huart2, data, len, 100); 
 }
 
-// MPU 初始化
 void MPU6050_Init(void) {
     uint8_t Data = 0;
+    // 不管初始化成不成功，都不要卡死在这里
     if (HAL_I2C_IsDeviceReady(&hi2c2, 0xD0, 2, 100) == HAL_OK) {
         HAL_I2C_Mem_Write(&hi2c2, 0xD0, 0x6B, 1, &Data, 1, 100);
     }
 }
 
-// MPU 读取
 uint8_t MPU6050_Read(MPU6050_Data_t *data) {
     uint8_t Rec_Data[14];
     if(HAL_I2C_Mem_Read(&hi2c2, 0xD0, 0x3B, 1, Rec_Data, 14, 2) == HAL_OK) {
@@ -82,7 +84,6 @@ uint8_t MPU6050_Read(MPU6050_Data_t *data) {
     return 0; 
 }
 
-// 打包 IMU
 void Package_IMU_Data(void) {
     for (int i = 0; i < MPU_SAMPLES; i++) {
         uint16_t offset = i * 16;
@@ -91,6 +92,7 @@ void Package_IMU_Data(void) {
         memcpy(&MpuSendPacket[offset + 2], &MpuBuffer[i], 14);
     }
 }
+/* USER CODE END 0 */
 
 int main(void)
 {
@@ -105,18 +107,20 @@ int main(void)
   MX_TIM3_Init();
 
   /* USER CODE BEGIN 2 */
-  HAL_Delay(200);
-  Uart_Send((uint8_t*)"\r\n=== RING BUFFER SYSTEM READY！ ===\r\n", 34);
+  HAL_Delay(500); // 等待上电稳定
+  
+  // 1. 打印个招呼，确保串口是通的
+  Uart_Send((uint8_t*)"\r\n=== SYSTEM READY ===\r\n", 22);
 
   MPU6050_Init();
   
+  // 2. 开启指令接收
   HAL_UART_Receive_IT(&huart2, &rx_cmd_byte, 1);
+  // 3. 开启定时器
   HAL_TIM_Base_Start_IT(&htim3);
   
-  // ==========================================================
-  // 核心：启动 UART1 DMA Circular 模式
-  // 哪怕 run_mode=0，它也在后台收数据，保证数据流不断
-  // ==========================================================
+  // 4. 开启 BMD101 接收 (Circular模式下，它会一直在后台跑，永不停止)
+  // 清除标志位，防止一上来就报错
   __HAL_UART_CLEAR_OREFLAG(&huart1);
   HAL_UART_Receive_DMA(&huart1, RxRingBuffer, RX_BUFFER_SIZE);
   /* USER CODE END 2 */
@@ -124,83 +128,86 @@ int main(void)
   while (1)
   {
     // =========================================================
-    // 任务1：BMD101 数据处理 (环形缓冲追赶逻辑)
-    // =========================================================
-    
-    // 1. 获取 DMA 当前写到哪了 (硬件位置)
-    // __HAL_DMA_GET_COUNTER 返回的是"倒计数"，所以要转换一下
-    write_ptr_hw = RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
-    
-    // 2. 只有在模式 2 下，我们才转发数据
-    if (run_mode == 2) {
-        
-        // 情况 A: 硬件写指针在软件读指针后面 (正常追赶)
-        if (write_ptr_hw > read_ptr_sw) {
-            uint16_t len = write_ptr_hw - read_ptr_sw;
-            // 直接发送这一段新数据
-            Uart_Send(&RxRingBuffer[read_ptr_sw], len);
-            // 更新读指针
-            read_ptr_sw = write_ptr_hw;
-        }
-        
-        // 情况 B: 硬件写指针跑到了前面 (回卷了/Wrap Around)
-        // 比如 Buffer大小10000，读到9900，写指针回到了 100
-        else if (write_ptr_hw < read_ptr_sw) {
-            // 第一步：先发 9900 到 10000 (尾部)
-            uint16_t len_tail = RX_BUFFER_SIZE - read_ptr_sw;
-            Uart_Send(&RxRingBuffer[read_ptr_sw], len_tail);
-            
-            // 第二步：再发 0 到 100 (头部)
-            if (write_ptr_hw > 0) {
-                Uart_Send(&RxRingBuffer[0], write_ptr_hw);
-            }
-            
-            // 更新读指针
-            read_ptr_sw = write_ptr_hw;
-        }
-    } 
-    else {
-        // 如果不是模式2，我们需要即使更新 read_ptr，假装我们读过了
-        // 这样当你切回模式2时，不会把之前积压的几万字节旧数据一股脑发出来
-        read_ptr_sw = write_ptr_hw;
-    }
-
-    // =========================================================
-    // 任务2：IMU 数据处理 (模式 1)
+    // 逻辑：run_mode = 1 时，同时处理 BMD 转发 和 IMU 采集
     // =========================================================
     if (run_mode == 1) {
+        
+        // --- 任务A: BMD101 实时转发 (防掉帧核心) ---
+        
+        // 1. 获取 DMA 硬件写到了哪里
+        // 转换公式：Buffer总大小 - DMA剩余计数
+        write_ptr = RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
+        
+        // 2. 如果有新数据 (写指针 != 读指针)
+        if (write_ptr != read_ptr) {
+            
+            // 情况1: 正常追赶 (Write > Read)
+            if (write_ptr > read_ptr) {
+                Uart_Send(&RxRingBuffer[read_ptr], write_ptr - read_ptr);
+                read_ptr = write_ptr;
+            }
+            // 情况2: 发生回卷 (Write < Read)
+            else {
+                // 先把尾巴发完
+                Uart_Send(&RxRingBuffer[read_ptr], RX_BUFFER_SIZE - read_ptr);
+                // 再把头部的发完
+                if (write_ptr > 0) {
+                    Uart_Send(&RxRingBuffer[0], write_ptr);
+                }
+                read_ptr = write_ptr;
+            }
+        }
+
+        // --- 任务B: IMU 采集与发送 ---
         if (mpu_timer_flag) {
             mpu_timer_flag = 0;
+            
+            // 采集一个点
             if (MPU6050_Read(&MpuBuffer[mpu_index]) == 1) {
                 mpu_index++;
             }
+            
+            // 攒够了50个点 (1秒)，直接发出去
             if (mpu_index >= MPU_SAMPLES) {
                 mpu_index = 0;
                 Package_IMU_Data();
+                
+                // 发送这800字节
+                // 由于 Uart_Send 是阻塞的，它发完才会继续
+                // 这期间 BMD 数据会被 DMA 自动存在 Ring Buffer 里，绝不会丢
                 Uart_Send(MpuSendPacket, IMU_TOTAL_SIZE);
             }
         }
-    } else {
-        mpu_index = 0; // 非IMU模式清零
+    } 
+    else {
+        // 如果是停止模式，我们需要同步指针，防止数据堆积
+        // 这样下次启动时，从最新的数据开始发，而不是发旧数据
+        write_ptr = RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
+        read_ptr = write_ptr;
+        mpu_index = 0;
     }
   }
 }
 
-// --- 中断回调 ---
+/* USER CODE BEGIN 4 */
+// 极简回调：只处理模式切换
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart->Instance == USART2) {
-        if (rx_cmd_byte == '1') run_mode = 1;
-        else if (rx_cmd_byte == '2') run_mode = 2;
-        else if (rx_cmd_byte == '3') run_mode = 0;
+        if (rx_cmd_byte == '1') {
+            run_mode = 1;
+            // 不需要打印 "Start"，防止干扰波形
+        }
+        else if (rx_cmd_byte == '3') {
+            run_mode = 0;
+        }
         HAL_UART_Receive_IT(&huart2, &rx_cmd_byte, 1);
     }
-    // 注意：这里不需要处理 UART1 的回调了，因为我们是主循环轮询指针
 }
 
-// 防止 ORE 错误导致 DMA 锁死 (这是掉帧的最大杀手)
+// 错误处理：防止 DMA 停止
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
     if (huart->Instance == USART1) {
-        // 仅仅清除标志，绝不重启DMA，因为Circular模式下DMA会自动恢复
+        // 只清标志，Circular 模式下 DMA 通常会自动恢复
         __HAL_UART_CLEAR_OREFLAG(huart);
         __HAL_UART_CLEAR_NEFLAG(huart);
         __HAL_UART_CLEAR_FEFLAG(huart);
@@ -208,11 +215,15 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-    if (htim->Instance == TIM3) mpu_timer_flag = 1;
+    if (htim->Instance == TIM3) {
+        mpu_timer_flag = 1;
+    }
 }
+/* USER CODE END 4 */
 
 void Error_Handler(void) { __disable_irq(); while (1) {} }
 void SystemClock_Config(void) {
+  // 请保留 CubeMX 生成的时钟配置
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
