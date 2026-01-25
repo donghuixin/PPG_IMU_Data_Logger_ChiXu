@@ -6,14 +6,14 @@ gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_def
 gemini_v1\stm32f1xx_hal.o: ../Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f1xx.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f103xb.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/CMSIS/Include/core_cm3.h
-gemini_v1\stm32f1xx_hal.o: G:\W\Keil532\Core\ARM\ARMCC\Bin\..\include\stdint.h
+gemini_v1\stm32f1xx_hal.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/CMSIS/Include/cmsis_version.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/CMSIS/Include/cmsis_compiler.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/CMSIS/Include/cmsis_armcc.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/CMSIS/Device/ST/STM32F1xx/Include/system_stm32f1xx.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy/stm32_hal_legacy.h
-gemini_v1\stm32f1xx_hal.o: G:\W\Keil532\Core\ARM\ARMCC\Bin\..\include\stddef.h
+gemini_v1\stm32f1xx_hal.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rcc_ex.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_gpio.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_gpio_ex.h
@@ -25,6 +25,7 @@ gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_fla
 gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h
+gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_spi.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h
 gemini_v1\stm32f1xx_hal.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h

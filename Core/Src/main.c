@@ -1,17 +1,15 @@
 /* USER CODE BEGIN Header */
 /**
-  * 最终极简版 (Combined)
-  * * 前置条件 (CubeMX配置)：
-  * 1. USART1 DMA RX -> Mode: Circular (必须是循环模式！！)
-  * 2. USART2 Baud Rate -> 921600 (波特率要够快)
-  * * 逻辑：
-  * - 收到 '1': 开启 混合传输 (BMD转发 + IMU采集发送)
-  * - 收到 '3': 停止
+  * 最终原子保存版 main.c
+  * 1. 文件名校验：严格8位限制。
+  * 2. Error 1 终极修复：使用 __disable_irq() 保护 f_close，防止中断打断 SPI 通信。
   */
 /* USER CODE END Header */
 #include "main.h"
 #include "dma.h"
+#include "fatfs.h"
 #include "i2c.h"
+#include "spi.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
@@ -19,7 +17,7 @@
 #include <stdio.h>
 
 /* USER CODE BEGIN PV */
-// --- MPU6050 (IMU) ---
+// --- MPU6050 ---
 #define MPU_SAMPLES     50
 #define IMU_TOTAL_SIZE  (MPU_SAMPLES * 16) 
 
@@ -32,20 +30,33 @@ typedef struct {
 MPU6050_Data_t MpuBuffer[MPU_SAMPLES];
 uint8_t MpuSendPacket[IMU_TOTAL_SIZE]; 
 
-// --- BMD101 (环形缓冲) ---
-// 只要是 Circular 模式，这个 buffer 就会像传送带一样永远转下去
+// --- BMD101 ---
 #define RX_BUFFER_SIZE  4096 
 uint8_t RxRingBuffer[RX_BUFFER_SIZE]; 
+uint32_t write_ptr = 0; 
+uint32_t read_ptr = 0;  
 
-// 指针
-uint32_t write_ptr = 0; // DMA 当前写到哪了
-uint32_t read_ptr = 0;  // 我们发送到哪了
+// --- SD 卡 ---
+#define SD_CACHE_SIZE   4096 
+uint8_t SDCacheBuf[SD_CACHE_SIZE];
+UINT  sd_buf_idx = 0;
 
-// 控制
-volatile uint8_t run_mode = 0; // 0=Stop, 1=Start
-uint8_t rx_cmd_byte;
+FATFS fs;
+FIL fil;
+FRESULT fres;
+UINT  bytes_written;
+uint8_t is_sd_ready = 0;
+uint8_t is_file_open = 0; 
 
-// MPU 变量
+// --- 状态机 ---
+volatile uint8_t sys_state = 0; // 0:Idle, 1:WaitName, 2:Running
+
+// --- 串口 ---
+uint8_t rx_byte_temp;          
+#define CMD_MAX_LEN 32         
+char rx_cmd_buffer[CMD_MAX_LEN]; 
+uint8_t rx_cmd_index = 0;      
+
 uint8_t mpu_index = 0;
 volatile uint8_t mpu_timer_flag = 0;
 /* USER CODE END PV */
@@ -54,16 +65,43 @@ volatile uint8_t mpu_timer_flag = 0;
 void SystemClock_Config(void);
 
 /* USER CODE BEGIN 0 */
-// 极简发送函数：直接调用 HAL 阻塞发送，依靠内部超时防止死锁
-// 921600波特率下，发送几个字节只需要微秒级，不会卡顿
-void Uart_Send(uint8_t* data, uint16_t len) {
+void Uart_Print(char* str) {
+    if(huart2.Instance != NULL) HAL_UART_Transmit(&huart2, (uint8_t*)str, strlen(str), 100);
+}
+
+void Data_Distribute(uint8_t* data, uint16_t len) {
     if (len == 0) return;
-    HAL_UART_Transmit(&huart2, data, len, 100); 
+    HAL_UART_Transmit(&huart2, data, len, 100);
+    // 只有在 Running 且文件打开时才存
+    if (sys_state == 2 && is_file_open && is_sd_ready) {
+        char text_tmp[8]; 
+        for (int i = 0; i < len; i++) {
+            int str_len = sprintf(text_tmp, "%02X", data[i]);
+            if (sd_buf_idx + str_len < SD_CACHE_SIZE) {
+                memcpy(&SDCacheBuf[sd_buf_idx], text_tmp, str_len);
+                sd_buf_idx += str_len;
+            } else break;
+        }
+    }
+}
+
+void SD_Write_Task(void) {
+    // 攒够 512 字节就写，不 sync，只 write
+    if (sys_state == 2 && is_file_open && is_sd_ready && sd_buf_idx >= 512) {
+        fres = f_write(&fil, SDCacheBuf, sd_buf_idx, &bytes_written);
+        if (fres == FR_OK) {
+            sd_buf_idx = 0; 
+        } else {
+            if (fres == FR_DISK_ERR || fres == FR_NOT_READY) {
+                 char msg[32]; sprintf(msg, "[SD] Write Err: %d\r\n", fres); Uart_Print(msg);
+                 is_sd_ready = 0; 
+            }
+        }
+    }
 }
 
 void MPU6050_Init(void) {
     uint8_t Data = 0;
-    // 不管初始化成不成功，都不要卡死在这里
     if (HAL_I2C_IsDeviceReady(&hi2c2, 0xD0, 2, 100) == HAL_OK) {
         HAL_I2C_Mem_Write(&hi2c2, 0xD0, 0x6B, 1, &Data, 1, 100);
     }
@@ -92,6 +130,44 @@ void Package_IMU_Data(void) {
         memcpy(&MpuSendPacket[offset + 2], &MpuBuffer[i], 14);
     }
 }
+
+void Create_New_File(char* filename) {
+    char full_name[32];
+    
+    // 严格校验文件名长度
+    if (strlen(filename) > 8) {
+        Uart_Print("\r\n[ERROR] Name too long! Max 8 chars.\r\n");
+        Uart_Print("[CMD] Please enter a shorter name:\r\n");
+        return; 
+    }
+
+    // 自动补全 .TXT
+    if (strstr(filename, ".TXT") == NULL && strstr(filename, ".txt") == NULL) {
+        sprintf(full_name, "%s.TXT", filename);
+    } else {
+        strcpy(full_name, filename);
+    }
+
+    Uart_Print("\r\n[System] Creating file: ");
+    Uart_Print(full_name);
+    Uart_Print("...\r\n");
+
+    fres = f_open(&fil, full_name, FA_CREATE_ALWAYS | FA_WRITE);
+    
+    if (fres == FR_OK) {
+        is_sd_ready = 1;
+        is_file_open = 1; 
+        sd_buf_idx = 0; 
+        sys_state = 2; 
+        Uart_Print("[System] File Created! RECORDING STARTED.\r\n");
+    } else {
+        char msg[32];
+        sprintf(msg, "[System] Create Failed: %d\r\n", fres);
+        Uart_Print(msg);
+        sys_state = 0; 
+        Uart_Print("CMD: Please type 'start' again.\r\n");
+    }
+}
 /* USER CODE END 0 */
 
 int main(void)
@@ -101,129 +177,214 @@ int main(void)
   
   MX_GPIO_Init();
   MX_DMA_Init();
-  MX_USART1_UART_Init();
-  MX_USART2_UART_Init();
   MX_I2C2_Init();
   MX_TIM3_Init();
+  MX_SPI1_Init();
+  MX_FATFS_Init();
 
   /* USER CODE BEGIN 2 */
-  HAL_Delay(500); // 等待上电稳定
+  // 1. 抗干扰
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin = GPIO_PIN_3; 
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT; 
+  GPIO_InitStruct.Pull = GPIO_PULLUP; 
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_Delay(2000); 
+
+  // 2. 初始化 UART
+  MX_USART1_UART_Init();
+  MX_USART2_UART_Init();
+  __HAL_UART_CLEAR_OREFLAG(&huart2);
   
-  // 1. 打印个招呼，确保串口是通的
-  Uart_Send((uint8_t*)"\r\n=== SYSTEM READY ===\r\n", 22);
+  sys_state = 0; 
+  memset(rx_cmd_buffer, 0, CMD_MAX_LEN); 
+  rx_cmd_index = 0;
+
+  Uart_Print("\r\n=== SYSTEM READY ===\r\n");
+
+  // 3. 挂载 SD
+  fres = f_mount(&fs, "", 1);
+  if (fres == FR_OK) {
+      is_sd_ready = 1; 
+      Uart_Print("[SD] Mount OK.\r\n");
+  } else {
+      is_sd_ready = 0;
+      Uart_Print("[SD] Mount Fail!\r\n");
+  }
 
   MPU6050_Init();
   
-  // 2. 开启指令接收
-  HAL_UART_Receive_IT(&huart2, &rx_cmd_byte, 1);
-  // 3. 开启定时器
+  HAL_UART_Receive_IT(&huart2, &rx_byte_temp, 1);
   HAL_TIM_Base_Start_IT(&htim3);
-  
-  // 4. 开启 BMD101 接收 (Circular模式下，它会一直在后台跑，永不停止)
-  // 清除标志位，防止一上来就报错
   __HAL_UART_CLEAR_OREFLAG(&huart1);
-  HAL_UART_Receive_DMA(&huart1, RxRingBuffer, RX_BUFFER_SIZE);
   /* USER CODE END 2 */
+
+  /* USER CODE BEGIN 1 */
+  static uint8_t is_dma_running = 0; 
+  static uint32_t guide_tick = 0; 
+  /* USER CODE END 1 */
 
   while (1)
   {
-    // =========================================================
-    // 逻辑：run_mode = 1 时，同时处理 BMD 转发 和 IMU 采集
-    // =========================================================
-    if (run_mode == 1) {
+    /* USER CODE BEGIN 3 */
+    SD_Write_Task();
+
+    // ==========================================================
+    // 状态机
+    // ==========================================================
+    if (sys_state == 2) { // 2: RUNNING
         
-        // --- 任务A: BMD101 实时转发 (防掉帧核心) ---
-        
-        // 1. 获取 DMA 硬件写到了哪里
-        // 转换公式：Buffer总大小 - DMA剩余计数
+        if (is_dma_running == 0) {
+            __HAL_UART_CLEAR_OREFLAG(&huart1);
+            __HAL_UART_CLEAR_NEFLAG(&huart1);
+            read_ptr = 0;
+            write_ptr = 0;
+            HAL_UART_Receive_DMA(&huart1, RxRingBuffer, RX_BUFFER_SIZE);
+            is_dma_running = 1; 
+        }
+
+        // 数据搬运
         write_ptr = RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
-        
-        // 2. 如果有新数据 (写指针 != 读指针)
         if (write_ptr != read_ptr) {
-            
-            // 情况1: 正常追赶 (Write > Read)
             if (write_ptr > read_ptr) {
-                Uart_Send(&RxRingBuffer[read_ptr], write_ptr - read_ptr);
+                Data_Distribute(&RxRingBuffer[read_ptr], write_ptr - read_ptr);
                 read_ptr = write_ptr;
-            }
-            // 情况2: 发生回卷 (Write < Read)
-            else {
-                // 先把尾巴发完
-                Uart_Send(&RxRingBuffer[read_ptr], RX_BUFFER_SIZE - read_ptr);
-                // 再把头部的发完
-                if (write_ptr > 0) {
-                    Uart_Send(&RxRingBuffer[0], write_ptr);
-                }
+            } else {
+                Data_Distribute(&RxRingBuffer[read_ptr], RX_BUFFER_SIZE - read_ptr);
+                if (write_ptr > 0) Data_Distribute(&RxRingBuffer[0], write_ptr);
                 read_ptr = write_ptr;
             }
         }
 
-        // --- 任务B: IMU 采集与发送 ---
         if (mpu_timer_flag) {
             mpu_timer_flag = 0;
-            
-            // 采集一个点
-            if (MPU6050_Read(&MpuBuffer[mpu_index]) == 1) {
-                mpu_index++;
-            }
-            
-            // 攒够了50个点 (1秒)，直接发出去
+            if (MPU6050_Read(&MpuBuffer[mpu_index]) == 1) mpu_index++;
             if (mpu_index >= MPU_SAMPLES) {
                 mpu_index = 0;
                 Package_IMU_Data();
-                
-                // 发送这800字节
-                // 由于 Uart_Send 是阻塞的，它发完才会继续
-                // 这期间 BMD 数据会被 DMA 自动存在 Ring Buffer 里，绝不会丢
-                Uart_Send(MpuSendPacket, IMU_TOTAL_SIZE);
+                Data_Distribute(MpuSendPacket, IMU_TOTAL_SIZE);
             }
         }
-    } 
-    else {
-        // 如果是停止模式，我们需要同步指针，防止数据堆积
-        // 这样下次启动时，从最新的数据开始发，而不是发旧数据
-        write_ptr = RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
-        read_ptr = write_ptr;
-        mpu_index = 0;
+
+    } else { // 0: IDLE, 1: WAIT_NAME
+        
+        if (is_dma_running == 1) {
+            HAL_UART_DMAStop(&huart1);
+            is_dma_running = 0;
+            
+            // 1. 刷入 DMA 剩余数据
+            uint32_t last_pos = RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
+            if (last_pos > read_ptr) Data_Distribute(&RxRingBuffer[read_ptr], last_pos - read_ptr);
+            
+            // 2. 写入最后一点缓存 (不开中断保护，如果这里出错就算了，重点是下一步)
+            if (is_file_open && sd_buf_idx > 0) {
+                fres = f_write(&fil, SDCacheBuf, sd_buf_idx, &bytes_written);
+                // 不做 f_sync
+            }
+
+            // 3. 【原子操作关闭文件】
+            // 这是解决 Error 1 的核心：关闭中断，专心致志关文件
+            if(is_file_open) {
+                Uart_Print("\r\n[System] Saving file... (Do not power off)\r\n");
+                
+                // --- 临界区开始 ---
+                __disable_irq(); // 关总中断：禁止任何东西打断 SPI
+                HAL_Delay(50);   // 给 SD 卡喘口气
+                fres = f_close(&fil); 
+                __enable_irq();  // 开总中断
+                // --- 临界区结束 ---
+                
+                if(fres == FR_OK) {
+                    Uart_Print("[System] File Saved & Closed SUCCESS.\r\n");
+                } else {
+                    char msg[32]; sprintf(msg, "[System] File Close ERR: %d\r\n", fres); Uart_Print(msg);
+                }
+                
+                is_file_open = 0; 
+            }
+            
+            Uart_Print("\r\n>>> STOPPED <<<\r\n");
+            guide_tick = HAL_GetTick(); 
+        }
+
+        // --- 循环播放指南 (3秒) ---
+        if (HAL_GetTick() - guide_tick > 3000) {
+            guide_tick = HAL_GetTick();
+            Uart_Print("\r\n=== STATUS REPORT ===\r\n");
+            if (sys_state == 0)      Uart_Print("System: IDLE\r\n");
+            else if (sys_state == 1) Uart_Print("System: WAITING NAME\r\n");
+            
+            if (fres == FR_OK) Uart_Print("SD Status: [OK]\r\n");
+            else { char msg[32]; sprintf(msg, "SD Status: [ERROR %d]\r\n", fres); Uart_Print(msg); }
+
+            Uart_Print("---------------------\r\n");
+            Uart_Print(" -> 'start' : New File\r\n");
+            Uart_Print(" -> 'reset' : Reboot\r\n");
+            Uart_Print("=====================\r\n");
+        }
     }
   }
+  /* USER CODE END 3 */
 }
 
 /* USER CODE BEGIN 4 */
-// 极简回调：只处理模式切换
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart->Instance == USART2) {
-        if (rx_cmd_byte == '1') {
-            run_mode = 1;
-            // 不需要打印 "Start"，防止干扰波形
+        
+        if (HAL_GetTick() < 3000) { HAL_UART_Receive_IT(&huart2, &rx_byte_temp, 1); return; }
+
+        if (rx_byte_temp == '\n' || rx_byte_temp == '\r') {
+            if (rx_cmd_index > 0) { 
+                rx_cmd_buffer[rx_cmd_index] = '\0'; 
+                
+                if (strstr(rx_cmd_buffer, "stop") != NULL) {
+                    sys_state = 0; 
+                }
+                else if (strstr(rx_cmd_buffer, "reset") != NULL) {
+                    Uart_Print("\r\n[System] Rebooting...\r\n");
+                    NVIC_SystemReset();
+                }
+                else if (sys_state == 0) { 
+                    if (strstr(rx_cmd_buffer, "start") != NULL) {
+                        sys_state = 1; 
+                        Uart_Print("\r\n[CMD] Enter Name (Max 8 chars, e.g. test01):\r\n");
+                    }
+                }
+                else if (sys_state == 1) { 
+                    if (strstr(rx_cmd_buffer, "start") == NULL) {
+                         Create_New_File(rx_cmd_buffer); 
+                    }
+                }
+            }
+            rx_cmd_index = 0;
+            memset(rx_cmd_buffer, 0, CMD_MAX_LEN);
+            
+        } else {
+            if (rx_cmd_index < CMD_MAX_LEN - 1) {
+                if ((rx_byte_temp >= '0' && rx_byte_temp <= 'z') || rx_byte_temp == '.') {
+                    rx_cmd_buffer[rx_cmd_index++] = rx_byte_temp;
+                }
+            }
         }
-        else if (rx_cmd_byte == '3') {
-            run_mode = 0;
-        }
-        HAL_UART_Receive_IT(&huart2, &rx_cmd_byte, 1);
+
+        HAL_UART_Receive_IT(&huart2, &rx_byte_temp, 1);
     }
 }
 
-// 错误处理：防止 DMA 停止
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
     if (huart->Instance == USART1) {
-        // 只清标志，Circular 模式下 DMA 通常会自动恢复
-        __HAL_UART_CLEAR_OREFLAG(huart);
-        __HAL_UART_CLEAR_NEFLAG(huart);
-        __HAL_UART_CLEAR_FEFLAG(huart);
+        __HAL_UART_CLEAR_OREFLAG(huart); __HAL_UART_CLEAR_NEFLAG(huart); __HAL_UART_CLEAR_FEFLAG(huart);
     }
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-    if (htim->Instance == TIM3) {
-        mpu_timer_flag = 1;
-    }
+    if (htim->Instance == TIM3) mpu_timer_flag = 1;
 }
 /* USER CODE END 4 */
 
 void Error_Handler(void) { __disable_irq(); while (1) {} }
 void SystemClock_Config(void) {
-  // 请保留 CubeMX 生成的时钟配置
+  // 请保留你原来的时钟配置
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
