@@ -1,4 +1,3 @@
-/* USER CODE BEGIN Header */
 /**
   * 混合版 user_diskio.c
   * 1. 初始化：使用 HAL 库 (稳)
