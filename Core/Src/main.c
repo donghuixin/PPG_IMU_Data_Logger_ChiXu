@@ -37,7 +37,7 @@ uint32_t write_ptr = 0;
 uint32_t read_ptr = 0;  
 
 // --- 【双缓冲核心定义】 ---
-#define BLOCK_SIZE 512
+#define BLOCK_SIZE 800
 uint8_t DoubleBuf[2][BLOCK_SIZE]; // 两个 512 字节的桶 (Ping-Pong)
 uint8_t buf_fill_idx = 0;         // 当前正在填哪个桶 (0 或 1)
 uint16_t buf_pos = 0;             // 当前桶填了多少
@@ -82,7 +82,7 @@ void Data_Distribute(uint8_t* data, uint16_t len) {
     if (len == 0) return;
     
     // 1. 串口回显 (你要的功能：发送给串口2)
-    HAL_UART_Transmit(&huart2, data, len, 10); 
+//    HAL_UART_Transmit(&huart2, data, len, 10); 
     
     // 2. 双缓冲填充 (存入 SD 卡)
     if (sys_state == 2 && is_file_open && is_sd_ready) {
