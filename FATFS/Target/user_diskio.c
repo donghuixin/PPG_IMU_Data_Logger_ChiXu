@@ -162,3 +162,4 @@ Diskio_drvTypeDef USER_Driver = {
 	USER_ioctl, 
 	#endif
 };
+

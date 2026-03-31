@@ -1,7 +1,7 @@
 Dependencies for Project 'gemini_v1', Target 'gemini_v1': (DO NOT MODIFY !)
 CompilerVersion: 5060960::V5.06 update 7 (build 960)::.\ARMCC
 F (startup_stm32f103xb.s)(0x6984603F)(--cpu Cortex-M3 -g --apcs=interwork -I.\RTE\_gemini_v1-ID:\Keil532\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Keil532\Pack\Keil\STM32F1xx_DFP\1.0.5\Device\Include--pd "__UVISION_VERSION SETA 532" --pd "_RTE_ SETA 1" --pd "STM32F10X_MD SETA 1" --pd "_RTE_ SETA 1"--list startup_stm32f103xb.lst --xref -o gemini_v1\startup_stm32f103xb.o --depend gemini_v1\startup_stm32f103xb.d)
-F (../Core/Src/main.c)(0x698460C5)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include -I ../FATFS/Target -I ../FATFS/App -I ../Middlewares/Third_Party/FatFs/src-I.\RTE\_gemini_v1-ID:\Keil532\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Keil532\Pack\Keil\STM32F1xx_DFP\1.0.5\Device\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F10X_MD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103xB-o gemini_v1\main.o --omf_browse gemini_v1\main.crf --depend gemini_v1\main.d)
+F (../Core/Src/main.c)(0x69C9DC00)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include -I ../FATFS/Target -I ../FATFS/App -I ../Middlewares/Third_Party/FatFs/src-I.\RTE\_gemini_v1-ID:\Keil532\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Keil532\Pack\Keil\STM32F1xx_DFP\1.0.5\Device\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F10X_MD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103xB-o gemini_v1\main.o --omf_browse gemini_v1\main.crf --depend gemini_v1\main.d)
 I (../Core/Inc/main.h)(0x6984603E)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x6984603F)
 I (../Core/Inc/stm32f1xx_hal_conf.h)(0x6984603E)
@@ -36,7 +36,7 @@ I (../Core/Inc/dma.h)(0x6984603E)
 I (../FATFS/App/fatfs.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/ff.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/integer.h)(0x6984603F)
-I (../FATFS/Target/ffconf.h)(0x698AA41E)
+I (../FATFS/Target/ffconf.h)(0x69A2A38A)
 I (../Middlewares/Third_Party/FatFs/src/ff_gen_drv.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/diskio.h)(0x6984603F)
 I (../FATFS/Target/user_diskio.h)(0x6984603F)
@@ -207,7 +207,7 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_spi.h)(0x6984603F)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h)(0x6984603F)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h)(0x6984603F)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x6984603F)
-F (../Core/Src/usart.c)(0x6984603E)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include -I ../FATFS/Target -I ../FATFS/App -I ../Middlewares/Third_Party/FatFs/src-I.\RTE\_gemini_v1-ID:\Keil532\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Keil532\Pack\Keil\STM32F1xx_DFP\1.0.5\Device\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F10X_MD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103xB-o gemini_v1\usart.o --omf_browse gemini_v1\usart.crf --depend gemini_v1\usart.d)
+F (../Core/Src/usart.c)(0x69C3E518)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include -I ../FATFS/Target -I ../FATFS/App -I ../Middlewares/Third_Party/FatFs/src-I.\RTE\_gemini_v1-ID:\Keil532\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Keil532\Pack\Keil\STM32F1xx_DFP\1.0.5\Device\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F10X_MD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103xB-o gemini_v1\usart.o --omf_browse gemini_v1\usart.crf --depend gemini_v1\usart.d)
 I (../Core/Inc/usart.h)(0x6984603E)
 I (../Core/Inc/main.h)(0x6984603E)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x6984603F)
@@ -812,14 +812,14 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_spi.h)(0x6984603F)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h)(0x6984603F)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h)(0x6984603F)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x6984603F)
-F (../FATFS/Target/user_diskio.c)(0x6984603F)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include -I ../FATFS/Target -I ../FATFS/App -I ../Middlewares/Third_Party/FatFs/src-I.\RTE\_gemini_v1-ID:\Keil532\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Keil532\Pack\Keil\STM32F1xx_DFP\1.0.5\Device\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F10X_MD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103xB-o gemini_v1\user_diskio.o --omf_browse gemini_v1\user_diskio.crf --depend gemini_v1\user_diskio.d)
+F (../FATFS/Target/user_diskio.c)(0x69A2A364)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include -I ../FATFS/Target -I ../FATFS/App -I ../Middlewares/Third_Party/FatFs/src-I.\RTE\_gemini_v1-ID:\Keil532\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Keil532\Pack\Keil\STM32F1xx_DFP\1.0.5\Device\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F10X_MD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103xB-o gemini_v1\user_diskio.o --omf_browse gemini_v1\user_diskio.crf --depend gemini_v1\user_diskio.d)
 I (D:\Keil532\Core\ARM\ARMCC\include\string.h)(0x5F63878A)
 I (D:\Keil532\Core\ARM\ARMCC\include\stdio.h)(0x5F63877C)
 I (../Middlewares/Third_Party/FatFs/src/ff_gen_drv.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/diskio.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/integer.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/ff.h)(0x6984603F)
-I (../FATFS/Target/ffconf.h)(0x698AA41E)
+I (../FATFS/Target/ffconf.h)(0x69A2A38A)
 I (../Core/Inc/main.h)(0x6984603E)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x6984603F)
 I (../Core/Inc/stm32f1xx_hal_conf.h)(0x6984603E)
@@ -857,7 +857,7 @@ F (../FATFS/App/fatfs.c)(0x6984603F)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=inte
 I (../FATFS/App/fatfs.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/ff.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/integer.h)(0x6984603F)
-I (../FATFS/Target/ffconf.h)(0x698AA41E)
+I (../FATFS/Target/ffconf.h)(0x69A2A38A)
 I (../Core/Inc/main.h)(0x6984603E)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x6984603F)
 I (../Core/Inc/stm32f1xx_hal_conf.h)(0x6984603E)
@@ -896,7 +896,7 @@ I (../Middlewares/Third_Party/FatFs/src/diskio.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/integer.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/ff_gen_drv.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/ff.h)(0x6984603F)
-I (../FATFS/Target/ffconf.h)(0x698AA41E)
+I (../FATFS/Target/ffconf.h)(0x69A2A38A)
 I (../Core/Inc/main.h)(0x6984603E)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x6984603F)
 I (../Core/Inc/stm32f1xx_hal_conf.h)(0x6984603E)
@@ -930,7 +930,7 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x6984603F)
 F (../Middlewares/Third_Party/FatFs/src/ff.c)(0x6984603F)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include -I ../FATFS/Target -I ../FATFS/App -I ../Middlewares/Third_Party/FatFs/src-I.\RTE\_gemini_v1-ID:\Keil532\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Keil532\Pack\Keil\STM32F1xx_DFP\1.0.5\Device\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F10X_MD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103xB-o gemini_v1\ff.o --omf_browse gemini_v1\ff.crf --depend gemini_v1\ff.d)
 I (../Middlewares/Third_Party/FatFs/src/ff.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/integer.h)(0x6984603F)
-I (../FATFS/Target/ffconf.h)(0x698AA41E)
+I (../FATFS/Target/ffconf.h)(0x69A2A38A)
 I (../Core/Inc/main.h)(0x6984603E)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x6984603F)
 I (../Core/Inc/stm32f1xx_hal_conf.h)(0x6984603E)
@@ -968,7 +968,7 @@ I (../Middlewares/Third_Party/FatFs/src/ff_gen_drv.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/diskio.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/integer.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/ff.h)(0x6984603F)
-I (../FATFS/Target/ffconf.h)(0x698AA41E)
+I (../FATFS/Target/ffconf.h)(0x69A2A38A)
 I (../Core/Inc/main.h)(0x6984603E)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x6984603F)
 I (../Core/Inc/stm32f1xx_hal_conf.h)(0x6984603E)
@@ -1003,7 +1003,7 @@ F (../Middlewares/Third_Party/FatFs/src/option/syscall.c)(0x6984603F)(--c99 -c -
 I (D:\Keil532\Core\ARM\ARMCC\include\stdlib.h)(0x5F63877C)
 I (../Middlewares/Third_Party/FatFs/src/option/../ff.h)(0x6984603F)
 I (../Middlewares/Third_Party/FatFs/src/option/../integer.h)(0x6984603F)
-I (../FATFS/Target/ffconf.h)(0x698AA41E)
+I (../FATFS/Target/ffconf.h)(0x69A2A38A)
 I (../Core/Inc/main.h)(0x6984603E)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x6984603F)
 I (../Core/Inc/stm32f1xx_hal_conf.h)(0x6984603E)
@@ -1034,4 +1034,37 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_spi.h)(0x6984603F)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h)(0x6984603F)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h)(0x6984603F)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x6984603F)
-F (../Middlewares/Third_Party/FatFs/src/option/ccsbcs.c)(0x6984603F)()
+F (../Middlewares/Third_Party/FatFs/src/option/ccsbcs.c)(0x6984603F)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include -I ../FATFS/Target -I ../FATFS/App -I ../Middlewares/Third_Party/FatFs/src-I.\RTE\_gemini_v1-ID:\Keil532\Pack\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Keil532\Pack\Keil\STM32F1xx_DFP\1.0.5\Device\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F10X_MD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103xB-o gemini_v1\ccsbcs.o --omf_browse gemini_v1\ccsbcs.crf --depend gemini_v1\ccsbcs.d)
+I (../Middlewares/Third_Party/FatFs/src/option/../ff.h)(0x6984603F)
+I (../Middlewares/Third_Party/FatFs/src/option/../integer.h)(0x6984603F)
+I (../FATFS/Target/ffconf.h)(0x69A2A38A)
+I (../Core/Inc/main.h)(0x6984603E)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x6984603F)
+I (../Core/Inc/stm32f1xx_hal_conf.h)(0x6984603E)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rcc.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_def.h)(0x6984603F)
+I (../Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f1xx.h)(0x6984603E)
+I (../Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f103xb.h)(0x6984603E)
+I (../Drivers/CMSIS/Include/core_cm3.h)(0x6984603F)
+I (D:\Keil532\Core\ARM\ARMCC\include\stdint.h)(0x5F63877C)
+I (../Drivers/CMSIS/Include/cmsis_version.h)(0x6984603F)
+I (../Drivers/CMSIS/Include/cmsis_compiler.h)(0x6984603F)
+I (../Drivers/CMSIS/Include/cmsis_armcc.h)(0x6984603F)
+I (../Drivers/CMSIS/Device/ST/STM32F1xx/Include/system_stm32f1xx.h)(0x6984603E)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy/stm32_hal_legacy.h)(0x6984603F)
+I (D:\Keil532\Core\ARM\ARMCC\include\stddef.h)(0x5F63877C)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rcc_ex.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_gpio.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_gpio_ex.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_exti.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_dma.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_dma_ex.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_cortex.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_spi.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h)(0x6984603F)
+I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x6984603F)

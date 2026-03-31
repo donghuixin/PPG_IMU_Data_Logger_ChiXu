@@ -32,6 +32,7 @@
 "gemini_v1\ff.o"
 "gemini_v1\ff_gen_drv.o"
 "gemini_v1\syscall.o"
+"gemini_v1\ccsbcs.o"
 --strict --scatter "gemini_v1\gemini_v1.sct"
 --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers

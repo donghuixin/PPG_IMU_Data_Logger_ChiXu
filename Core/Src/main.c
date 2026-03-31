@@ -19,16 +19,23 @@
 #include <stdio.h>
 
 /* USER CODE BEGIN PV */
-// --- MPU6050 ---
+// --- MPU6050 / MPU9250 ---
 #define MPU_SAMPLES     50
+// 一帧 = AA 55(2) + 加速度(6) + 陀螺仪(6) + \r \n(2) = 16 字节
 #define IMU_TOTAL_SIZE  (MPU_SAMPLES * 16) 
-typedef struct {
-    int16_t Accel_X; int16_t Accel_Y; int16_t Accel_Z;
-    int16_t Temp;
-    int16_t Gyro_X;  int16_t Gyro_Y;  int16_t Gyro_Z;
-} MPU6050_Data_t;
+
+typedef struct __attribute__((packed)) {
+    int16_t Accel_X; 
+    int16_t Accel_Y; 
+    int16_t Accel_Z;
+    // Temp 已彻底删除
+    int16_t Gyro_X;  
+    int16_t Gyro_Y;  
+    int16_t Gyro_Z;
+} MPU6050_Data_t; // 占用 12 字节
+
 MPU6050_Data_t MpuBuffer[MPU_SAMPLES];
-uint8_t MpuSendPacket[IMU_TOTAL_SIZE]; 
+uint8_t MpuSendPacket[IMU_TOTAL_SIZE];
 
 // --- UART 接收缓冲 (2KB) ---
 #define RX_BUFFER_SIZE  2048 
@@ -138,22 +145,65 @@ void SD_Write_Thread(void) {
 }
 
 void MPU6050_Init(void) {
-    uint8_t Data = 0;
-    if (HAL_I2C_IsDeviceReady(&hi2c2, 0xD0, 2, 100) == HAL_OK) {
-        HAL_I2C_Mem_Write(&hi2c2, 0xD0, 0x6B, 1, &Data, 1, 100);
+    // ================= 配置区：修改这里即可改变传感器性能 =================
+    
+    uint8_t SMPLRT_DIV   = 19;      // 采样率 = 1000 / (1 + 19) = 50Hz (十进制写19更直观)
+    uint8_t DLPF_CFG     = 0x03;    // 低通滤波 (约42Hz带宽)
+    
+    // 陀螺仪量程: 0x00(±250°/s), 0x08(±500°/s), 0x10(±1000°/s), 0x18(±2000°/s)
+    uint8_t GYRO_RANGE   = 0x18;    
+    
+    // 加速度计量程: 0x00(±2g), 0x08(±4g), 0x10(±8g), 0x18(±16g)
+    uint8_t ACCEL_RANGE  = 0x18;    
+    
+    // =====================================================================
+
+    uint8_t check;
+    uint8_t data;
+
+    // 1. 确认设备是否存在
+    HAL_I2C_Mem_Read(&hi2c2, 0xD0, 0x75, 1, &check, 1, 100);
+    if (check == 0x68) {
+        
+        // 2. 唤醒电源
+        data = 0x00;
+        HAL_I2C_Mem_Write(&hi2c2, 0xD0, 0x6B, 1, &data, 1, 100);
+        
+        // 重要：给硬件一点时间从睡眠中苏醒
+        HAL_Delay(10); 
+
+        // 3. 设置采样率
+        HAL_I2C_Mem_Write(&hi2c2, 0xD0, 0x19, 1, &SMPLRT_DIV, 1, 100);
+
+        // 4. 设置低通滤波
+        HAL_I2C_Mem_Write(&hi2c2, 0xD0, 0x1A, 1, &DLPF_CFG, 1, 100);
+
+        // 5. 配置陀螺仪量程
+        HAL_I2C_Mem_Write(&hi2c2, 0xD0, 0x1B, 1, &GYRO_RANGE, 1, 100);
+
+        // 6. 配置加速度计量程
+        HAL_I2C_Mem_Write(&hi2c2, 0xD0, 0x1C, 1, &ACCEL_RANGE, 1, 100);
     }
 }
 
 uint8_t MPU6050_Read(MPU6050_Data_t *data) {
     uint8_t Rec_Data[14];
+    // 读取 14 字节：Accel(6) + Temp(2) + Gyro(6)
     if(HAL_I2C_Mem_Read(&hi2c2, 0xD0, 0x3B, 1, Rec_Data, 14, 2) == HAL_OK) {
-        data->Accel_X = (int16_t)(Rec_Data[0] << 8 | Rec_Data[1]);
-        data->Accel_Y = (int16_t)(Rec_Data[2] << 8 | Rec_Data[3]);
-        data->Accel_Z = (int16_t)(Rec_Data[4] << 8 | Rec_Data[5]);
-        data->Temp    = (int16_t)(Rec_Data[6] << 8 | Rec_Data[7]);
-        data->Gyro_X  = (int16_t)(Rec_Data[8] << 8 | Rec_Data[9]);
-        data->Gyro_Y  = (int16_t)(Rec_Data[10] << 8 | Rec_Data[11]);
-        data->Gyro_Z  = (int16_t)(Rec_Data[12] << 8 | Rec_Data[13]);
+        uint8_t *pOut = (uint8_t*)data;
+        
+        // 拷贝加速度 (直接拷贝，保留大端，方便 Excel 和 HxD 查看)
+        pOut[0] = Rec_Data[0]; pOut[1] = Rec_Data[1]; 
+        pOut[2] = Rec_Data[2]; pOut[3] = Rec_Data[3]; 
+        pOut[4] = Rec_Data[4]; pOut[5] = Rec_Data[5]; 
+        
+        // 跳过 Rec_Data[6] 和 [7] (温度数据)
+        
+        // 拷贝陀螺仪 
+        pOut[6] = Rec_Data[8];  pOut[7] = Rec_Data[9];  
+        pOut[8] = Rec_Data[10]; pOut[9] = Rec_Data[11]; 
+        pOut[10] = Rec_Data[12]; pOut[11] = Rec_Data[13]; 
+        
         return 1; 
     }
     return 0; 
@@ -161,16 +211,24 @@ uint8_t MPU6050_Read(MPU6050_Data_t *data) {
 
 void Package_IMU_Data(void) {
     for (int i = 0; i < MPU_SAMPLES; i++) {
-        uint16_t offset = i * 16;
+        uint16_t offset = i * 16; // 每帧 16 字节
+        
+        // 1. 包头
         MpuSendPacket[offset]     = 0xAA;
         MpuSendPacket[offset + 1] = 0x55;
-        memcpy(&MpuSendPacket[offset + 2], &MpuBuffer[i], 14);
+        
+        // 2. 数据 (12字节)
+        memcpy(&MpuSendPacket[offset + 2], &MpuBuffer[i], 12);
+        
+        // 3. 包尾：物理换行符
+        MpuSendPacket[offset + 14] = 0x0D; // \r (回车)
+        MpuSendPacket[offset + 15] = 0x0A; // \n (换行)
     }
 }
 
 void Create_New_File(char* filename) {
-    char full_name[32];
-    if (strlen(filename) > 8) { Uart_Print("\r\n[ERR] Name too long.\r\n"); return; }
+    char full_name[256];
+    if (strlen(filename) > 64) { Uart_Print("\r\n[ERR] Name too long.\r\n"); return; }
     
     // 使用 .BIN 后缀，因为我们存的是原始二进制数据
     sprintf(full_name, "%s.BIN", filename); 
@@ -274,15 +332,22 @@ int main(void)
     /* USER CODE BEGIN 3 */
     
     // 心跳
-    if (HAL_GetTick() - heartbeat_tick > 1000) {
-        heartbeat_tick = HAL_GetTick();
-        Uart_Print("*"); 
-    }
+
 
     // 1. 写卡线程 (Ping-Pong 处理)
     SD_Write_Thread();
 
     // 2. 数据采集线程
+    if (sys_state == 0) { 
+        if (is_dma_running == 0) {
+					    if (HAL_GetTick() - heartbeat_tick > 5000) {
+            heartbeat_tick = HAL_GetTick();
+            Uart_Print("===CMD LIST===\r\n");				
+						Uart_Print("START:START THE TASK\r\n");	
+						Uart_Print("STOP:STOP THE TASK\r\n");	
+						Uart_Print("RESET:RESET THE SYSTEM\r\n");									
+    }}
+        }		
     if (sys_state == 2) { 
         if (is_dma_running == 0) {
             __HAL_UART_CLEAR_OREFLAG(&huart1); __HAL_UART_CLEAR_NEFLAG(&huart1);
