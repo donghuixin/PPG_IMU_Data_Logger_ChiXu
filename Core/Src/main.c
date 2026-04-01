@@ -508,14 +508,16 @@ void Create_New_File(char* filename) {
         
         sys_state = 2; 
         Uart_Print("Files Created Successfully!\r\n");
-        Uart_Print("开始测试\r\n");
+        Uart_Print("Start testing\r\n");
     } else {
         if (!is_sd_ready) {
             Uart_Print("\r\n[ERROR] Start timeout (15s): SD card not detected or mounted failed!\r\n");
+            Ble_Print("\r\n[ERROR] SD Card NOT detected!\r\n"); // SD卡未插入
         } else {
             char msg[128]; 
             sprintf(msg, "\r\n[ERROR] Start timeout (15s): File creation failed! PPG_Err=%d, IMU_Err=%d\r\n", fres_ppg, fres_imu); 
             Uart_Print(msg);
+            Ble_Print("\r\n[ERROR] File creation failed!\r\n"); // 文件创建失败
         }
         sys_state = 0; 
     }
@@ -772,21 +774,21 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
                 if (strstr(rx_cmd_buffer, "stop") != NULL) { 
                     sys_state = 0; 
                     Uart_Print("\r\n[CMD] Stopped\r\n");
-                    Ble_Print("\r\n[CMD] Stopped\r\n");
+                    Ble_Print("\r\n[CMD] Stopped\r\n"); // Notify webpage that it has stopped
                 }
                 else if (strstr(rx_cmd_buffer, "reset") != NULL) { 
                     Uart_Print("\r\n[CMD] Resetting...\r\n");
-                    Ble_Print("\r\n[CMD] Resetting...\r\n");
+                    Ble_Print("\r\n[CMD] Resetting...\r\n"); // Notify webpage that it is resetting
                     NVIC_SystemReset(); 
                 }
                 else if (sys_state == 0 && strstr(rx_cmd_buffer, "start") != NULL) { 
                     sys_state = 1; 
                     Uart_Print("\r\n[CMD] Name?\r\n"); 
-                    Ble_Print("\r\n[CMD] Name?\r\n"); // HuixinUpdate: 同时通过蓝牙发送给网页
+                    Ble_Print("\r\n[CMD] Name?\r\n"); // HuixinUpdate: Send to webpage via Bluetooth simultaneously
                 }
                 else if (sys_state == 1 && strstr(rx_cmd_buffer, "start") == NULL) { 
                     Create_New_File(rx_cmd_buffer); 
-                    Ble_Print("\r\n[CMD] Files Created\r\n"); // 告知网页文件创建成功
+                    Ble_Print("\r\n[CMD] Files Created\r\n"); // Notify webpage that file creation is successful
                 }
             }
             rx_cmd_index = 0; memset(rx_cmd_buffer, 0, CMD_MAX_LEN);
