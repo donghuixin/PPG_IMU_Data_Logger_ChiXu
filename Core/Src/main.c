@@ -556,6 +556,16 @@ void Boot_Test(void) {
     }
     Uart_Print(">>> End Test <<<\r\n\r\n");
 }
+
+// ====================================================================
+// HuixinUpdate: 新增蓝牙专属发送函数，解决指令回传网页收不到的问题
+// ====================================================================
+void Ble_Print(char* str) {
+    // 蓝牙模块连接在 USART2 上
+    HAL_UART_Transmit(&huart2, (uint8_t*)str, strlen(str), 100);
+}
+// ====================================================================
+
 /* USER CODE END 0 */
 
 int main(void)
@@ -625,8 +635,8 @@ int main(void)
     if (sys_state == 1) {
         if (start_cmd_tick == 0) {
             start_cmd_tick = HAL_GetTick();
-        } else if (HAL_GetTick() - start_cmd_tick > 15000) { // 15 seconds timeout
-            Uart_Print("\r\n[ERROR] Start command timeout (15s). Did not receive file name.\r\n");
+        } else if (HAL_GetTick() - start_cmd_tick > 5000) { // 5 seconds timeout
+            Uart_Print("\r\n[ERROR] Start command timeout (5s). Did not receive file name.\r\n");
             sys_state = 0;
             start_cmd_tick = 0; // Reset tick
         }
@@ -759,10 +769,25 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
         if (rx_byte_temp == '\n' || rx_byte_temp == '\r') {
             if (rx_cmd_index > 0) { 
                 rx_cmd_buffer[rx_cmd_index] = '\0'; 
-                if (strstr(rx_cmd_buffer, "stop") != NULL) { sys_state = 0; }
-                else if (strstr(rx_cmd_buffer, "reset") != NULL) { NVIC_SystemReset(); }
-                else if (sys_state == 0 && strstr(rx_cmd_buffer, "start") != NULL) { sys_state = 1; Uart_Print("\r\n[CMD] Name?\r\n"); }
-                else if (sys_state == 1 && strstr(rx_cmd_buffer, "start") == NULL) { Create_New_File(rx_cmd_buffer); }
+                if (strstr(rx_cmd_buffer, "stop") != NULL) { 
+                    sys_state = 0; 
+                    Uart_Print("\r\n[CMD] Stopped\r\n");
+                    Ble_Print("\r\n[CMD] Stopped\r\n");
+                }
+                else if (strstr(rx_cmd_buffer, "reset") != NULL) { 
+                    Uart_Print("\r\n[CMD] Resetting...\r\n");
+                    Ble_Print("\r\n[CMD] Resetting...\r\n");
+                    NVIC_SystemReset(); 
+                }
+                else if (sys_state == 0 && strstr(rx_cmd_buffer, "start") != NULL) { 
+                    sys_state = 1; 
+                    Uart_Print("\r\n[CMD] Name?\r\n"); 
+                    Ble_Print("\r\n[CMD] Name?\r\n"); // HuixinUpdate: 同时通过蓝牙发送给网页
+                }
+                else if (sys_state == 1 && strstr(rx_cmd_buffer, "start") == NULL) { 
+                    Create_New_File(rx_cmd_buffer); 
+                    Ble_Print("\r\n[CMD] Files Created\r\n"); // 告知网页文件创建成功
+                }
             }
             rx_cmd_index = 0; memset(rx_cmd_buffer, 0, CMD_MAX_LEN);
         } else {

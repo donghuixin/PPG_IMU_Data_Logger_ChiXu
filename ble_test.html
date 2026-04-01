@@ -33,6 +33,7 @@
         .log-tx { color: #4dabf7; font-weight: bold; }
         .log-rx { color: #69db7c; }
         .log-err { color: #ff6b6b; font-weight: bold; }
+        .log-at { color: #fcc419; }
     </style>
 </head>
 <body>
@@ -53,6 +54,13 @@
         <button id="resetBtn" class="danger" disabled>🔄 发送 Reset 复位</button>
     </div>
 
+    <div class="toolbar" style="background-color: #ffe8cc; border: 1px solid #ffd8a8; padding: 15px; border-radius: 8px;">
+        <span style="font-size: 14px; font-weight: bold; color: #d9480f; margin-right: 10px;">⚠️ 模块底层控制(AT通道):</span>
+        <button id="atExitBtn" disabled style="background-color: #fd7e14;">退出AT模式 (AT+EXIT)</button>
+        <button id="atStatusBtn" disabled style="background-color: #fd7e14;">开启状态显示 (AT+STATUS=1)</button>
+        <button id="atRestartBtn" disabled style="background-color: #fd7e14;">软重启蓝牙模块 (AT+RESTART)</button>
+    </div>
+
     <div class="console-container">
         <div class="console-header">
             <h3>串口接收与发送日志</h3>
@@ -61,26 +69,25 @@
         <div class="console-box" id="consoleBox"></div>
         
         <div class="toolbar" style="margin-top: 5px; margin-bottom: 0;">
-            <input type="text" id="customCmdInput" placeholder="输入自定义指令 (按回车发送，将自动追加 \r\n)">
-            <button id="sendCustomBtn" disabled>发送指令</button>
+            <input type="text" id="customCmdInput" placeholder="默认发往透传通道 (按回车发送)">
+            <button id="sendCustomBtn" disabled>发送至 STM32</button>
         </div>
     </div>
 </div>
 
 <script>
-    // 扩展常用的低功耗蓝牙串口服务 UUID 列表，专门覆盖 RF-star 和常见的国产透传模块
     const UART_SERVICE_UUIDS = [
-        0xFFE0,                                  // JDY系列等常见国产透传
-        0xFFF0,                                  // 重点！信驰达(RF-star) 等国产模块常用主服务 UUID
-        '6e400001-b5a3-f393-e0a9-e50e24dcca9e',  // Nordic UART Service (信驰达高级模块也会兼容这个)
-        '49535343-fe7d-4ae5-8fa9-9fafd205e455'   // ISSC (Microchip) UART Service
+        0xFFE0,                                  
+        0xFFF0,                                  
+        '6e400001-b5a3-f393-e0a9-e50e24dcca9e',  
+        '49535343-fe7d-4ae5-8fa9-9fafd205e455'   
     ];
 
     let bluetoothDevice;
     let rxCharacteristic;
     let txCharacteristic;
+    let atCharacteristic; // 新增：保存专属 AT 指令特征值
 
-    // UI 元素获取
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
     const statusBadge = document.getElementById('statusBadge');
@@ -89,30 +96,28 @@
     const stopBtn = document.getElementById('stopBtn');
     const resetBtn = document.getElementById('resetBtn');
     
+    const atExitBtn = document.getElementById('atExitBtn');
+    const atStatusBtn = document.getElementById('atStatusBtn');
+    const atRestartBtn = document.getElementById('atRestartBtn');
+    
     const filenameInput = document.getElementById('filenameInput');
     const customCmdInput = document.getElementById('customCmdInput');
     const sendCustomBtn = document.getElementById('sendCustomBtn');
     const clearConsoleBtn = document.getElementById('clearConsoleBtn');
     const consoleBox = document.getElementById('consoleBox');
 
-    // 日志打印功能
     function log(message, type = 'info') {
         const div = document.createElement('div');
         const time = new Date().toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit', fractionalSecondDigits: 3 });
-        
         div.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-${type}">${escapeHtml(message)}</span>`;
         consoleBox.appendChild(div);
-        
-        // 自动滚动到底部
         consoleBox.scrollTop = consoleBox.scrollHeight;
     }
 
-    // HTML 转义防止注入
     function escapeHtml(unsafe) {
         return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 
-    // 更新 UI 状态
     function updateUI(connected, deviceName = '') {
         connectBtn.disabled = connected;
         disconnectBtn.disabled = !connected;
@@ -122,6 +127,10 @@
         sendCustomBtn.disabled = !connected;
         customCmdInput.disabled = !connected;
         filenameInput.disabled = !connected;
+        
+        atExitBtn.disabled = !connected;
+        atStatusBtn.disabled = !connected;
+        atRestartBtn.disabled = !connected;
 
         if (connected) {
             statusBadge.textContent = `已连接: ${deviceName}`;
@@ -132,15 +141,11 @@
         }
     }
 
-    // 清空控制台
     clearConsoleBtn.addEventListener('click', () => {
         consoleBox.innerHTML = '';
         log('控制台已清空', 'info');
     });
 
-    // ==========================================
-    // 蓝牙核心逻辑
-    // ==========================================
     connectBtn.addEventListener('click', async () => {
         if (!navigator.bluetooth) {
             log('错误: 当前浏览器不支持 Web Bluetooth API。请使用 Chrome 或 Edge。', 'err');
@@ -148,69 +153,70 @@
         }
 
         try {
-            log('正在请求蓝牙设备 (已开放扫描权限，请在弹窗中寻找你的模块)...', 'info');
-            
-            // 【重点修改】放弃 namePrefix 过滤，改为接受所有设备，让你肉眼选择，防止广播包无名字被拦截
+            log('正在请求蓝牙设备...', 'info');
             bluetoothDevice = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
                 optionalServices: UART_SERVICE_UUIDS
             });
 
-            // 如果设备名为空，显示默认字样
             const deviceName = bluetoothDevice.name || '未知名称设备';
             log(`选定设备: ${deviceName} (${bluetoothDevice.id})`, 'info');
             
             bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
 
-            log('正在连接到 GATT 服务器...', 'info');
             const server = await bluetoothDevice.gatt.connect();
-            
-            log('正在查找 UART 串口服务...', 'info');
             let uartService = null;
             
-            // 遍历查找匹配的串口服务
             for (const uuid of UART_SERVICE_UUIDS) {
                 try {
                     uartService = await server.getPrimaryService(uuid);
-                    if (uartService) {
-                        log(`找到匹配的 UART 服务 UUID: ${typeof uuid === 'number' ? '0x' + uuid.toString(16).toUpperCase() : uuid}`, 'info');
-                        break;
-                    }
-                } catch (e) {
-                    // 当前 UUID 不存在，继续尝试下一个
-                }
+                    if (uartService) break;
+                } catch (e) {}
             }
 
-            if (!uartService) {
-                throw new Error('设备不支持预设的透传 UART 服务。可能是固件限制或 UUID 需特殊定制。');
-            }
+            if (!uartService) throw new Error('设备不支持预设的透传 UART 服务。');
 
-            log('正在获取读写特征值...', 'info');
             const characteristics = await uartService.getCharacteristics();
-            
             rxCharacteristic = null;
             txCharacteristic = null;
+            atCharacteristic = null;
 
+            // 【核心修复】：智能分配数据通道与指令通道
             for (const char of characteristics) {
+                const uuidStr = char.uuid.toLowerCase();
+
+                // 1. 过滤掉专属 AT 指令通道 (0004)
+                if (uuidStr.includes('0004') || uuidStr.includes('6e400004')) {
+                    atCharacteristic = char;
+                    log(`发现专属 AT 指令通道: ${char.uuid}`, 'at');
+                    continue; // 必须跳过，防止污染数据透传通道
+                }
+
+                // 2. 绑定剩余的透传读写通道
                 if (char.properties.write || char.properties.writeWithoutResponse) {
                     txCharacteristic = char;
-                    log(`找到可写(TX)特征值: ${char.uuid}`, 'info');
                 }
                 if (char.properties.notify || char.properties.indicate) {
                     rxCharacteristic = char;
-                    log(`找到通知(RX)特征值: ${char.uuid}`, 'info');
                 }
             }
 
-            if (!txCharacteristic || !rxCharacteristic) {
-                throw new Error('未找到完整的读(Notify)写(Write)特征值');
-            }
+            if (!txCharacteristic || !rxCharacteristic) throw new Error('未找到完整的读写特征值');
 
-            // 开启通知接收数据
+            // 订阅透传接收
             await rxCharacteristic.startNotifications();
             rxCharacteristic.addEventListener('characteristicvaluechanged', handleDataReceived);
 
-            log(`✅ 蓝牙连接成功并已准备就绪！`, 'success');
+            // 订阅AT通道的返回值(如果存在)
+            if (atCharacteristic && (atCharacteristic.properties.notify || atCharacteristic.properties.indicate)) {
+                await atCharacteristic.startNotifications();
+                atCharacteristic.addEventListener('characteristicvaluechanged', (e) => {
+                    const text = new TextDecoder('utf-8').decode(e.target.value);
+                    log(`AT反馈: ${text.trim()}`, 'at');
+                });
+            }
+
+            log(`✅ 蓝牙连接成功！`, 'success');
             updateUI(true, deviceName);
 
         } catch (error) {
@@ -219,91 +225,87 @@
         }
     });
 
-    // 蓝牙断开回调
     function onDisconnected(event) {
-        const device = event.target;
-        log(`❌ 蓝牙已断开连接 (${device.name || '未知设备'})`, 'err');
+        log(`❌ 蓝牙已断开连接`, 'err');
         updateUI(false);
     }
 
-    // 主动断开连接
     disconnectBtn.addEventListener('click', () => {
         if (bluetoothDevice && bluetoothDevice.gatt.connected) {
             bluetoothDevice.gatt.disconnect();
         }
     });
 
-    // ==========================================
-    // 数据发送与接收处理
-    // ==========================================
-    
-    // 接收到蓝牙发来的数据
     function handleDataReceived(event) {
-        const value = event.target.value;
-        const decoder = new TextDecoder('utf-8');
-        const text = decoder.decode(value);
-        log(`RX: ${text}`, 'rx');
+        const text = new TextDecoder('utf-8').decode(event.target.value);
+        log(`RX (STM32): ${text}`, 'rx');
     }
 
-    // 发送数据到蓝牙
-    async function sendData(dataString) {
-        if (!txCharacteristic) {
-            log('错误: 无法发送，未找到写入特征值', 'err');
-            return;
+    // 【核心修复】：区分发送给 STM32 还是发给 蓝牙模块(AT)
+    async function sendData(dataString, isAtCmd = false) {
+        let targetChar = txCharacteristic;
+
+        if (isAtCmd) {
+            if (atCharacteristic) {
+                targetChar = atCharacteristic; // 直接发往专属 0004 通道
+            } else {
+                // 若由于使用其他服务(如FFF0)没有0004，则通过主通道发 +++ 模拟进入指令模式
+                log(`[无专属AT通道] 模拟发送 +++`, 'at');
+                const enterAtMode = new TextEncoder().encode('+++');
+                await (txCharacteristic.properties.writeWithoutResponse ? 
+                    txCharacteristic.writeValueWithoutResponse(enterAtMode) : 
+                    txCharacteristic.writeValueWithResponse(enterAtMode));
+                await new Promise(r => setTimeout(r, 200)); 
+            }
         }
+
+        if (!targetChar) return log('错误: 无法发送，未找到写入特征值', 'err');
         
         try {
-            const encoder = new TextEncoder();
-            const data = encoder.encode(dataString);
-            
-            // 【重点修改】优先使用现代规范的 API 进行写入
-            if (txCharacteristic.properties.writeWithoutResponse) {
-                await txCharacteristic.writeValueWithoutResponse(data);
+            const data = new TextEncoder().encode(dataString);
+            if (targetChar.properties.writeWithoutResponse) {
+                await targetChar.writeValueWithoutResponse(data);
             } else {
-                await txCharacteristic.writeValueWithResponse(data);
+                await targetChar.writeValueWithResponse(data);
             }
             
-            log(`TX: ${dataString.replace(/\r/g, '\\r').replace(/\n/g, '\\n')}`, 'tx');
+            const logMsg = dataString.replace(/\r/g, '\\r').replace(/\n/g, '\\n');
+            if (isAtCmd) {
+                log(`[TX -> 模块(AT)]: ${logMsg}`, 'at');
+            } else {
+                log(`[TX -> STM32]: ${logMsg}`, 'tx');
+            }
         } catch (error) {
             log(`发送失败: ${error.message}`, 'err');
         }
     }
 
-    // ==========================================
-    // 按钮交互指令逻辑
-    // ==========================================
-    
+    // --- STM32 透传指令交互 ---
     startBtn.addEventListener('click', async () => {
         const filename = filenameInput.value.trim() || 'test_data';
-        log('>>> 开始执行 Start 采集流程 <<<', 'info');
+        log('>>> 发送 Start 流程至 STM32 <<<', 'info');
         await sendData('start\r\n');
-        
-        setTimeout(async () => {
-            await sendData(filename + '\r\n');
-        }, 300);
+        setTimeout(async () => { await sendData(filename + '\r\n'); }, 300);
     });
 
-    stopBtn.addEventListener('click', async () => {
-        await sendData('stop\r\n');
-    });
-
-    resetBtn.addEventListener('click', async () => {
-        await sendData('reset\r\n');
-    });
-
+    stopBtn.addEventListener('click', async () => await sendData('stop\r\n'));
+    resetBtn.addEventListener('click', async () => await sendData('reset\r\n'));
+    
     sendCustomBtn.addEventListener('click', async () => {
-        const cmd = customCmdInput.value;
-        if (cmd) {
-            await sendData(cmd + '\r\n');
+        if (customCmdInput.value) {
+            await sendData(customCmdInput.value + '\r\n');
             customCmdInput.value = ''; 
         }
     });
 
     customCmdInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            sendCustomBtn.click();
-        }
+        if (e.key === 'Enter') sendCustomBtn.click();
     });
+
+    // --- 蓝牙底层 AT 管理 ---
+    atExitBtn.addEventListener('click', async () => await sendData('AT+EXIT\r\n', true));
+    atStatusBtn.addEventListener('click', async () => await sendData('AT+STATUS=1\r\n', true));
+    atRestartBtn.addEventListener('click', async () => await sendData('AT+RESTART\r\n', true));
 
 </script>
 </body>
