@@ -508,8 +508,15 @@ void Create_New_File(char* filename) {
         
         sys_state = 2; 
         Uart_Print("Files Created Successfully!\r\n");
+        Uart_Print("开始测试\r\n");
     } else {
-        char msg[64]; sprintf(msg, "Err: PPG=%d, IMU=%d\r\n", fres_ppg, fres_imu); Uart_Print(msg);
+        if (!is_sd_ready) {
+            Uart_Print("\r\n[ERROR] Start timeout (15s): SD card not detected or mounted failed!\r\n");
+        } else {
+            char msg[128]; 
+            sprintf(msg, "\r\n[ERROR] Start timeout (15s): File creation failed! PPG_Err=%d, IMU_Err=%d\r\n", fres_ppg, fres_imu); 
+            Uart_Print(msg);
+        }
         sys_state = 0; 
     }
 }
@@ -607,11 +614,25 @@ int main(void)
   /* USER CODE BEGIN 1 */
   static uint8_t is_dma_running = 0; 
   static uint32_t heartbeat_tick = 0;
+  static uint32_t start_cmd_tick = 0;
   /* USER CODE END 1 */
 
   while (1)
   {
     /* USER CODE BEGIN 3 */
+    
+    // 超时检测: 当处于等待命名状态(sys_state==1)时，如果超过15秒没进入 sys_state==2，则报错
+    if (sys_state == 1) {
+        if (start_cmd_tick == 0) {
+            start_cmd_tick = HAL_GetTick();
+        } else if (HAL_GetTick() - start_cmd_tick > 15000) { // 15 seconds timeout
+            Uart_Print("\r\n[ERROR] Start command timeout (15s). Did not receive file name.\r\n");
+            sys_state = 0;
+            start_cmd_tick = 0; // Reset tick
+        }
+    } else {
+        start_cmd_tick = 0; // Reset tick if not in state 1
+    }
     
     // ����
     // Main Loop
