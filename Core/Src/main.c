@@ -226,9 +226,8 @@ void SD_Write_Thread(void) {
             fres = f_write(&fil_ppg, pBuf, PPG_BLOCK_SIZE, &bytes_written);
             
             if (fres == FR_OK) {
-                // Uart_Print("p"); 
-                // HuixinUpdate: 定期同步防止丢失（可选）
-                // f_sync(&fil_ppg);
+                // HuixinUpdate: 每次写入后立即同步，防止断电导致数据丢失
+                f_sync(&fil_ppg);
             } else {
                 char msg[32]; sprintf(msg, "[P_Err:%d]", fres); Uart_Print(msg);
             }
@@ -243,9 +242,8 @@ void SD_Write_Thread(void) {
             fres = f_write(&fil_imu, pBuf, IMU_BLOCK_SIZE, &bytes_written);
             
             if (fres == FR_OK) {
-                // Uart_Print("i");
-                // HuixinUpdate: 定期同步防止丢失（可选）
-                // f_sync(&fil_imu);
+                // HuixinUpdate: 每次写入后立即同步，防止断电导致数据丢失
+                f_sync(&fil_imu);
             } else {
                 char msg[32]; sprintf(msg, "[I_Err:%d]", fres); Uart_Print(msg);
             }
