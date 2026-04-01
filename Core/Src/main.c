@@ -5,6 +5,12 @@
   * 1. ���� DoubleBuf[2][512]��
   * 2. ����2��ʲô�����Ǿ��� DoubleBuf ���ʲô��
   * 3. �չ� 512 �ֽڣ�����һ�� Block Write (���õײ� DMA)��
+  * 
+  * Double Buffer (Ping-Pong) + DMA writing main.c
+  * Logic:
+  * 1. Define DoubleBuf[2][512]
+  * 2. Receive data via USART2 and store it in DoubleBuf
+  * 3. When 512 bytes are collected, trigger a Block Write (using underlying DMA)
   */
 /* USER CODE END Header */
 #include "main.h"
@@ -22,6 +28,7 @@
 // --- MPU6050 / MPU9250 ---
 #define MPU_SAMPLES     50
 // һ֡ = AA 55(2) + ���ٶ�(6) + ������(6) + \r \n(2) = 16 �ֽ�
+// 1 Frame = AA 55(2) + Accel(6) + Gyro(6) + \r \n(2) = 16 Bytes
 #define IMU_TOTAL_SIZE  (MPU_SAMPLES * 16) 
 
 typedef struct __attribute__((packed)) {
@@ -29,22 +36,27 @@ typedef struct __attribute__((packed)) {
     int16_t Accel_Y; 
     int16_t Accel_Z;
     // Temp �ѳ���ɾ��
+    // Temp has been removed
     int16_t Gyro_X;  
     int16_t Gyro_Y;  
     int16_t Gyro_Z;
 } MPU6050_Data_t; // ռ�� 12 �ֽ�
+                  // Takes 12 Bytes
 
 MPU6050_Data_t MpuBuffer[MPU_SAMPLES];
 uint8_t MpuSendPacket[IMU_TOTAL_SIZE];
 
 // --- UART ���ջ��� (2KB) ---
+// --- UART Receive Buffer (2KB) ---
 #define RX_BUFFER_SIZE  2048 
 uint8_t RxRingBuffer[RX_BUFFER_SIZE]; 
 uint32_t write_ptr = 0; 
 uint32_t read_ptr = 0;  
 
 // --- ��˫������Ķ��塿 ---
+// --- Double Buffer Definition ---
 // HuixinUpdate: 拆分 PPG 和 IMU 的双缓冲定义，以支持双文件独立写入
+// HuixinUpdate: Split double buffer for PPG and IMU to support dual-file independent writing
 /* 原代码保留：
 #define BLOCK_SIZE 800
 uint8_t DoubleBuf[2][BLOCK_SIZE]; // ���� 512 �ֽڵ�Ͱ (Ping-Pong)
@@ -71,8 +83,10 @@ uint16_t imu_buf_pos = 0;
 volatile uint8_t imu_ready_to_write_idx = 0xFF; 
 
 // --- �ļ�ϵͳ ---
+// --- File System ---
 FATFS fs;
 // HuixinUpdate: 定义两个独立的文件对象，分别存储 PPG 和 IMU 数据
+// HuixinUpdate: Define two independent file objects to store PPG and IMU data separately
 /* 原代码保留：
 FIL fil;
 */
@@ -90,6 +104,7 @@ uint8_t is_imu_file_open = 0;
 volatile uint8_t sys_state = 0; 
 
 // --- ����ָ�� ---
+// --- Receive Command ---
 uint8_t rx_byte_temp;          
 #define CMD_MAX_LEN 32         
 char rx_cmd_buffer[CMD_MAX_LEN]; 
@@ -99,6 +114,7 @@ uint8_t mpu_index = 0;
 volatile uint8_t mpu_timer_flag = 0;
 
 // HuixinUpdate: 记录采集批次，用于自动生成序号文件夹
+// HuixinUpdate: Record collection batch, used to automatically generate sequential folders
 uint16_t session_id = 1; 
 /* USER CODE END PV */
 
@@ -112,6 +128,7 @@ void Uart_Print(char* str) {
 
 // -------------------------------------------------------------
 // HuixinUpdate: 处理 PPG 数据，写入 PPG 专用的双缓冲区
+// HuixinUpdate: Process PPG data and write to dedicated PPG double buffer
 // -------------------------------------------------------------
 /* 原代码保留：
 // -------------------------------------------------------------
@@ -167,6 +184,7 @@ void PPG_Data_Distribute(uint8_t* data, uint16_t len) {
 
 // -------------------------------------------------------------
 // HuixinUpdate: 处理 IMU 数据，写入 IMU 专用的双缓冲区
+// HuixinUpdate: Process IMU data and write to dedicated IMU double buffer
 // -------------------------------------------------------------
 void IMU_Data_Distribute(uint8_t* data, uint16_t len) {
     if (len == 0) return;
@@ -186,7 +204,9 @@ void IMU_Data_Distribute(uint8_t* data, uint16_t len) {
 
 // -------------------------------------------------------------
 // SD ��д������ (������) - ����ѭ������
+// SD card write thread (non-blocking) - put in main loop
 // HuixinUpdate: 拆分 SD 卡写入线程，分别检查 PPG 和 IMU 的缓冲区并写入
+// HuixinUpdate: Split SD card write thread, check and write PPG and IMU buffers separately
 // -------------------------------------------------------------
 /* 原代码保留：
 // -------------------------------------------------------------
@@ -220,6 +240,7 @@ void SD_Write_Thread(void) {
 
 void SD_Write_Thread(void) {
     // 1. 写 PPG 数据
+    // 1. Write PPG Data
     if (ppg_ready_to_write_idx != 0xFF) {
         if (sys_state == 2 && is_ppg_file_open && is_sd_ready) {
             uint8_t* pBuf = PpgDoubleBuf[ppg_ready_to_write_idx];
@@ -227,6 +248,7 @@ void SD_Write_Thread(void) {
             
             if (fres == FR_OK) {
                 // HuixinUpdate: 每次写入后立即同步，防止断电导致数据丢失
+                // HuixinUpdate: Sync immediately after each write to prevent data loss on power failure
                 f_sync(&fil_ppg);
             } else {
                 char msg[32]; sprintf(msg, "[P_Err:%d]", fres); Uart_Print(msg);
@@ -236,6 +258,7 @@ void SD_Write_Thread(void) {
     }
     
     // 2. 写 IMU 数据
+    // 2. Write IMU Data
     if (imu_ready_to_write_idx != 0xFF) {
         if (sys_state == 2 && is_imu_file_open && is_sd_ready) {
             uint8_t* pBuf = ImuDoubleBuf[imu_ready_to_write_idx];
@@ -243,6 +266,7 @@ void SD_Write_Thread(void) {
             
             if (fres == FR_OK) {
                 // HuixinUpdate: 每次写入后立即同步，防止断电导致数据丢失
+                // HuixinUpdate: Sync immediately after each write to prevent data loss on power failure
                 f_sync(&fil_imu);
             } else {
                 char msg[32]; sprintf(msg, "[I_Err:%d]", fres); Uart_Print(msg);
@@ -254,14 +278,19 @@ void SD_Write_Thread(void) {
 
 void MPU6050_Init(void) {
     // ================= ���������޸����Ｔ�ɸı䴫�������� =================
+    // ================= User can modify these parameters to change sensor characteristics =================
     
     uint8_t SMPLRT_DIV   = 19;      // ������ = 1000 / (1 + 19) = 50Hz (ʮ����д19��ֱ��)
+                                    // Sample Rate = 1000 / (1 + 19) = 50Hz (decimal 19)
     uint8_t DLPF_CFG     = 0x03;    // ��ͨ�˲� (Լ42Hz����)
+                                    // Low Pass Filter (approx 42Hz bandwidth)
     
     // ����������: 0x00(��250��/s), 0x08(��500��/s), 0x10(��1000��/s), 0x18(��2000��/s)
+    // Gyro Range: 0x00(±250°/s), 0x08(±500°/s), 0x10(±1000°/s), 0x18(±2000°/s)
     uint8_t GYRO_RANGE   = 0x18;    
     
     // ���ٶȼ�����: 0x00(��2g), 0x08(��4g), 0x10(��8g), 0x18(��16g)
+    // Accel Range: 0x00(±2g), 0x08(±4g), 0x10(±8g), 0x18(±16g)
     uint8_t ACCEL_RANGE  = 0x18;    
     
     // =====================================================================
@@ -270,26 +299,33 @@ void MPU6050_Init(void) {
     uint8_t data;
 
     // 1. ȷ���豸�Ƿ����
+    // 1. Check if device is present
     HAL_I2C_Mem_Read(&hi2c2, 0xD0, 0x75, 1, &check, 1, 100);
     if (check == 0x68) {
         
         // 2. ���ѵ�Դ
+        // 2. Wake up sensor
         data = 0x00;
         HAL_I2C_Mem_Write(&hi2c2, 0xD0, 0x6B, 1, &data, 1, 100);
         
         // ��Ҫ����Ӳ��һ��ʱ���˯��������
+        // Need to give hardware some time to wake up
         HAL_Delay(10); 
 
         // 3. ���ò�����
+        // 3. Set sample rate
         HAL_I2C_Mem_Write(&hi2c2, 0xD0, 0x19, 1, &SMPLRT_DIV, 1, 100);
 
         // 4. ���õ�ͨ�˲�
+        // 4. Set low pass filter
         HAL_I2C_Mem_Write(&hi2c2, 0xD0, 0x1A, 1, &DLPF_CFG, 1, 100);
 
         // 5. ��������������
+        // 5. Set gyro range
         HAL_I2C_Mem_Write(&hi2c2, 0xD0, 0x1B, 1, &GYRO_RANGE, 1, 100);
 
         // 6. ���ü��ٶȼ�����
+        // 6. Set accel range
         HAL_I2C_Mem_Write(&hi2c2, 0xD0, 0x1C, 1, &ACCEL_RANGE, 1, 100);
     }
 }
@@ -297,17 +333,21 @@ void MPU6050_Init(void) {
 uint8_t MPU6050_Read(MPU6050_Data_t *data) {
     uint8_t Rec_Data[14];
     // ��ȡ 14 �ֽڣ�Accel(6) + Temp(2) + Gyro(6)
+    // Read 14 bytes: Accel(6) + Temp(2) + Gyro(6)
     if(HAL_I2C_Mem_Read(&hi2c2, 0xD0, 0x3B, 1, Rec_Data, 14, 2) == HAL_OK) {
         uint8_t *pOut = (uint8_t*)data;
         
         // �������ٶ� (ֱ�ӿ�����������ˣ����� Excel �� HxD �鿴)
+        // Copy Accel (Direct copy for faster performance, parsing in Excel or HxD)
         pOut[0] = Rec_Data[0]; pOut[1] = Rec_Data[1]; 
         pOut[2] = Rec_Data[2]; pOut[3] = Rec_Data[3]; 
         pOut[4] = Rec_Data[4]; pOut[5] = Rec_Data[5]; 
         
         // ���� Rec_Data[6] �� [7] (�¶�����)
+        // Skip Rec_Data[6] and [7] (Temperature Data)
         
         // ���������� 
+        // Copy Gyro
         pOut[6] = Rec_Data[8];  pOut[7] = Rec_Data[9];  
         pOut[8] = Rec_Data[10]; pOut[9] = Rec_Data[11]; 
         pOut[10] = Rec_Data[12]; pOut[11] = Rec_Data[13]; 
@@ -320,15 +360,19 @@ uint8_t MPU6050_Read(MPU6050_Data_t *data) {
 void Package_IMU_Data(void) {
     for (int i = 0; i < MPU_SAMPLES; i++) {
         uint16_t offset = i * 16; // ÿ֡ 16 �ֽ�
+                                  // Each frame is 16 bytes
         
         // 1. ��ͷ
+        // 1. Frame Header
         MpuSendPacket[offset]     = 0xAA;
         MpuSendPacket[offset + 1] = 0x55;
         
         // 2. ���� (12�ֽ�)
+        // 2. Data (12 bytes)
         memcpy(&MpuSendPacket[offset + 2], &MpuBuffer[i], 12);
         
         // 3. ��β���������з�
+        // 3. Frame Tail (Carriage Return & Line Feed)
         MpuSendPacket[offset + 14] = 0x0D; // \r (�س�)
         MpuSendPacket[offset + 15] = 0x0A; // \n (����)
     }
@@ -404,6 +448,7 @@ void Create_New_File(char* filename) {
 
 void Create_New_File(char* filename) {
     // HuixinUpdate: 以文件夹形式存储。每次采集生成独立的序号文件夹
+    // HuixinUpdate: Store as folders. Generate independent sequential folder for each collection
     char dir_name[128];
     char path_ppg[256];
     char path_imu[256];
@@ -411,14 +456,17 @@ void Create_New_File(char* filename) {
     if (strlen(filename) > 64) { Uart_Print("\r\n[ERR] Name too long.\r\n"); return; }
     
     // 1. 生成文件夹名，例如: "001_Data"
+    // 1. Generate folder name, e.g., "001_Data"
     sprintf(dir_name, "%03d_%s", session_id, filename);
     session_id++; // 序号自增，为下一次采集做准备
+                  // Increment sequence ID for the next collection
     
     Uart_Print("\r\nCreating Directory: "); 
     Uart_Print(dir_name); 
     Uart_Print("\r\n");
     
     // 2. 创建文件夹 (如果已经存在，f_mkdir会返回FR_EXIST，我们忽略这个错误继续创建文件)
+    // 2. Create folder (if exists, f_mkdir returns FR_EXIST, ignore and continue)
     FRESULT res_dir = f_mkdir(dir_name);
     if (res_dir != FR_OK && res_dir != FR_EXIST) {
         char msg[64]; sprintf(msg, "[ERR] mkdir failed: %d\r\n", res_dir); Uart_Print(msg);
@@ -427,17 +475,20 @@ void Create_New_File(char* filename) {
     }
     
     // 3. 拼接完整的文件路径 (放在刚才创建的文件夹内)
+    // 3. Concatenate full file paths (inside the newly created folder)
     sprintf(path_ppg, "%s/PPG.BIN", dir_name); 
     sprintf(path_imu, "%s/IMU.BIN", dir_name); 
 
     Uart_Print("Creating PPG & IMU files inside dir...\r\n");
     
     // 4. 创建并打开文件
+    // 4. Create and open files
     FRESULT fres_ppg = f_open(&fil_ppg, path_ppg, FA_CREATE_ALWAYS | FA_WRITE);
     FRESULT fres_imu = f_open(&fil_imu, path_imu, FA_CREATE_ALWAYS | FA_WRITE);
     
     if (fres_ppg == FR_OK && fres_imu == FR_OK) {
         // HuixinUpdate: 预分配 10MB 空间 (需要 FatFs 配置 _USE_EXPAND == 1，如果不支持可忽略)
+        // HuixinUpdate: Pre-allocate 10MB space (Requires FatFs _USE_EXPAND == 1)
         // FRESULT res1 = f_expand(&fil_ppg, 10 * 1024 * 1024, 1);
         // FRESULT res2 = f_expand(&fil_imu, 10 * 1024 * 1024, 1);
         
@@ -446,6 +497,7 @@ void Create_New_File(char* filename) {
         is_imu_file_open = 1;
         
         // 重置双缓冲状态
+        // Reset double buffer state
         ppg_buf_fill_idx = 0;
         ppg_buf_pos = 0;
         ppg_ready_to_write_idx = 0xFF;
@@ -463,6 +515,7 @@ void Create_New_File(char* filename) {
 }
 
 // �ϵ��Լ캯�� (��Ҫ�Ĺ���)
+// Boot test function (Check DMA functionality)
 /* 原代码保留：
 void Boot_Test(void) {
     Uart_Print("\r\n>>> Boot Test (DMA Check) <<<\r\n");
@@ -561,12 +614,15 @@ int main(void)
     /* USER CODE BEGIN 3 */
     
     // ����
+    // Main Loop
 
 
     // 1. д���߳� (Ping-Pong ����)
+    // 1. Write Thread (Ping-Pong processing)
     SD_Write_Thread();
 
     // 2. ���ݲɼ��߳�
+    // 2. Data Collection Thread
     if (sys_state == 0) { 
         if (is_dma_running == 0) {
 					    if (HAL_GetTick() - heartbeat_tick > 5000) {
@@ -601,6 +657,7 @@ int main(void)
             */
             if (write_ptr > read_ptr) { 
                 // HuixinUpdate: 替换为专门的 PPG 分发函数
+                // HuixinUpdate: Replace with dedicated PPG distribution function
                 PPG_Data_Distribute(&RxRingBuffer[read_ptr], write_ptr - read_ptr); 
                 read_ptr = write_ptr; 
             } else { 
@@ -620,6 +677,7 @@ int main(void)
                 Data_Distribute(MpuSendPacket, IMU_TOTAL_SIZE); 
                 */
                 // HuixinUpdate: 替换为专门的 IMU 分发函数
+                // HuixinUpdate: Replace with dedicated IMU distribution function
                 IMU_Data_Distribute(MpuSendPacket, IMU_TOTAL_SIZE); 
             }
         }
@@ -627,6 +685,7 @@ int main(void)
         if (is_dma_running == 1) {
             HAL_UART_DMAStop(&huart1); is_dma_running = 0;
             // ������������
+            // Process remaining data
             uint32_t last_pos = RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
             /* 原代码保留：
             if (last_pos > read_ptr) Data_Distribute(&RxRingBuffer[read_ptr], last_pos - read_ptr);
@@ -645,9 +704,11 @@ int main(void)
             }
             */
             // HuixinUpdate: 停止时处理残留 PPG 数据
+            // HuixinUpdate: Process remaining PPG data when stopped
             if (last_pos > read_ptr) PPG_Data_Distribute(&RxRingBuffer[read_ptr], last_pos - read_ptr);
             
             // HuixinUpdate: 写入最后不满一块的残留数据
+            // HuixinUpdate: Write remaining data that does not fill a whole block
             if (ppg_buf_pos > 0) {
                  f_write(&fil_ppg, PpgDoubleBuf[ppg_buf_fill_idx], ppg_buf_pos, &bytes_written);
             }
@@ -694,6 +755,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) { if (htim->Instance
 
 // ==========================================================
 // ���Ļص���ֻ���� Callback����д ISR (��ֹ�ض���)
+// System callbacks should only call Callback, not write ISR (prevent redefinition)
 // ==========================================================
 extern volatile uint8_t SpiTxCplt; 
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi) {
